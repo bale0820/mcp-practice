@@ -159,3 +159,39 @@ echo $SHELL   # /bin/bash 인지 확인
 # 즉 구조:
 #   ~/.bashrc          → alias(단축 명령어) 저장
 #   .claude.json       → 실제 MCP 서버 연결 설정 저장 (프로젝트별로 분리)
+
+
+
+
+###############################################
+# STEP 1: GitHub MCP 서버 등록
+###############################################
+
+# 아래에서 "발급받은_토큰" 부분만 실제 토큰(github_pat_... 형태)으로 교체
+
+claude mcp add github \
+  -e GITHUB_PERSONAL_ACCESS_TOKEN="발급받은_토큰" \
+  -- npx -y @modelcontextprotocol/server-github
+
+claude mcp list
+
+###############################################
+# STEP 3: alias 함수 등록 (MySQL과 동일 패턴)
+###############################################
+
+cat >> ~/.bashrc << 'EOF'
+
+mcpgithub-on() {
+  claude mcp add github -e GITHUB_PERSONAL_ACCESS_TOKEN="발급받은_토큰" -- npx -y @modelcontextprotocol/server-github
+}
+mcpgithub-off() {
+  claude mcp remove github
+}
+EOF
+
+source ~/.bashrc
+
+
+
+
+
