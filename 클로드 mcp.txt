@@ -1,0 +1,161 @@
+###############################################
+# MCP + Claude Code 실전 세팅 정리 (WSL Ubuntu-24.04)
+###############################################
+
+# ── 1. WSL 배포판 확인 및 진입 ──────────────────
+wsl -l                        # 설치된 배포판 목록 확인
+wsl -d Ubuntu-24.04            # Ubuntu-24.04로 명시적 진입 (기본 Ubuntu와 별개)
+wsl --set-default Ubuntu-24.04 # 매번 이걸 기본값으로 쓰고 싶을 때
+
+
+# ── 2. sudo 비밀번호 재설정 (잊어버렸을 때) ──────
+# Windows PowerShell(관리자 권한)에서 실행
+# wsl -d Ubuntu-24.04 -u root -- passwd bale
+
+
+# ── 3. Git + GitHub SSH 연동 ────────────────────
+git config --global user.name "본인이름"
+git config --global user.email "본인이메일"
+
+# SSH 키 확인 (이미 있으면 재생성 불필요)
+ls -la ~/.ssh
+
+# 연결 테스트
+ssh -T git@github.com
+# → "Hi bale0820! You've successfully authenticated..." 나오면 성공
+
+# remote를 HTTPS → SSH로 변경 (비밀번호 안 물어보게)
+git remote set-url origin git@github.com:bale0820/mcp-practice.git
+git remote -v   # 확인
+
+# 프로젝트 초기화 + 첫 커밋 + push
+mkdir -p ~/projects/mcp-practice && cd ~/projects/mcp-practice
+git init
+echo "# MCP Practice" > README.md
+git add README.md
+git commit -m "init"
+git branch -M main
+git push -u origin main
+
+
+# ── 4. WSL 안에 MySQL 설치 (실무 표준: 운영환경=리눅스와 통일) ──
+sudo apt update
+sudo apt install -y mysql-server
+sudo service mysql start
+sudo service mysql status      # active (running) 확인
+
+# root 인증 방식 설정 + 테스트 DB 생성
+sudo mysql
+
+-- MySQL 프롬프트 안에서 실행
+ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'practice1234';
+FLUSH PRIVILEGES;
+
+CREATE DATABASE mcp_practice;
+USE mcp_practice;
+
+CREATE TABLE users (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(50),
+  email VARCHAR(100)
+);
+
+INSERT INTO users (name, email) VALUES
+  ('테스트유저1', 'test1@example.com'),
+  ('테스트유저2', 'test2@example.com');
+
+EXIT;
+
+
+
+# ── 5. MySQL MCP 서버 등록 (실무 표준 패키지: @benborla29/mcp-server-mysql) ──
+# 12,205 다운로드, 최근까지 유지보수 중, Claude Code 전용 최적화된 패키지
+
+claude mcp add mcp_server_mysql \
+  -e MYSQL_HOST="127.0.0.1" \
+  -e MYSQL_PORT="3306" \
+  -e MYSQL_USER="root" \
+  -e MYSQL_PASS="practice1234" \
+  -e MYSQL_DB="mcp_practice" \
+  -- npx @benborla29/mcp-server-mysql
+
+claude mcp list   # ✔ Connected 확인
+
+# 기본은 읽기 전용(SELECT만). 쓰기 작업 허용하려면 아래 환경변수 추가:
+# -e ALLOW_INSERT_OPERATION="true"
+# -e ALLOW_UPDATE_OPERATION="true"
+# -e ALLOW_DELETE_OPERATION="true"
+
+
+# ── 6. 실전 테스트 (여기까지 성공!) ─────────────
+claude
+
+# Claude Code 프롬프트에서
+users 테이블 스키마 보여줘
+users 테이블에 데이터 몇 개 있어?
+
+
+###############################################
+# GUI로 DB 눈으로 확인하고 싶을 때 (선택)
+###############################################
+# Windows에 DBeaver 설치 → 아래 정보로 새 연결
+#   Host: localhost
+#   Port: 3306
+#   Username: root
+#   Password: practice1234
+# → WSL2는 localhost 포트를 Windows와 자동 공유(forwarding)하므로 바로 접속 가능
+
+
+
+###############################################
+# alias가 실제로 저장된 위치와 원리
+###############################################
+
+# ── 저장 위치: ~/.bashrc (WSL Ubuntu-24.04 안의 파일) ──
+# 실제 경로: /home/bale/.bashrc
+
+# 확인 방법
+cat ~/.bashrc | grep -A 1 mcpmysql
+
+
+# 출력 결과 (지금 저장되어 있는 내용)
+alias mcpmysql-off='claude mcp remove mcp_server_mysql'
+alias mcpmysql-on='claude mcp add mcp_server_mysql -e MYSQL_HOST="127.0.0.1" -e MYSQL_PORT="3306" -e MYSQL_USER="root" -e MYSQL_PASS="practice1234" -e MYSQL_DB="mcp_practice" -- npx @benborla29/mcp-server-mysql'
+alias mcpmysql-status='claude mcp list'
+
+###############################################
+# 원리: .bashrc는 언제 실행되나
+###############################################
+
+# .bashrc는 "새 터미널(셸)을 열 때마다" 자동으로 읽히는 설정 파일
+# → 그래서 WSL 터미널 새로 열면 mcpmysql-on/off/status가 항상 쓸 수 있게 됨
+
+# 지금 세션에 바로 반영시키려면 (터미널 재시작 안 해도 됨)
+source ~/.bashrc
+
+# 이게 안 되면 (드물게 다른 셸 설정파일 쓰는 경우) 확인
+echo $SHELL   # /bin/bash 인지 확인
+
+###############################################
+# 실제로 MCP 서버 등록 정보가 저장되는 곳 (별개)
+###############################################
+
+# alias 자체는 그냥 "명령어 단축키"일 뿐이고,
+# 진짜 MCP 연결 정보는 아래 파일에 저장됨 (Windows 쪽 경로)
+
+# C:\Users\bale\.claude.json
+
+# 이 파일 안에 프로젝트별로 구분되어 저장됨:
+# {
+#   "projects": {
+#     "D:\\bale\\projects\\mcp-practice": {
+#       "mcpServers": {
+#         "mcp_server_mysql": { ... 연결 정보 ... }
+#       }
+#     }
+#   }
+# }
+
+# 즉 구조:
+#   ~/.bashrc          → alias(단축 명령어) 저장
+#   .claude.json       → 실제 MCP 서버 연결 설정 저장 (프로젝트별로 분리)
